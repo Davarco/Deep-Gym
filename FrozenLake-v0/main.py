@@ -21,13 +21,14 @@ def test_parameters(env, params):
         if n % decay_freq == 0:
             epsilon = max(min_epsilon, epsilon*decay_rate)
 
-        while True:
+        # while True:
+        for _ in range(100):
             # Choose action using epsilon greedy policy.
             if np.random.random() > epsilon:
                 Q_temp = [Q[(state, i)] for i in range(4)]
                 action = Q_temp.index(max(Q_temp))
             else:
-                action = np.random.randint(0, 4)
+                action = env.action_space.sample()
             nstate, reward, done, info = env.step(action)
             # print('Action: {}\nNext State: {}\nReward: {}\n'.format(action, nstate, reward))
 
@@ -41,46 +42,47 @@ def test_parameters(env, params):
                 # print("Episode terminated. {}".format('win' if reward > 0 else 'lose'))
                 break
 
-    wins, losses = 0, 0
+    wins = 0
     for _ in range(M):
         state = env.reset()
         while True:
-            if np.random.random() > epsilon:
-                Q_temp = [Q[(state, i)] for i in range(4)]
-                action = Q_temp.index(max(Q_temp))
-            else:
-                action = np.random.randint(0, 4)
+            Q_temp = [Q[(state, i)] for i in range(4)]
+            action = Q_temp.index(max(Q_temp))
             nstate, reward, done, info = env.step(action)
             state = nstate
             if done:
-                wins += reward > 0
-                losses += reward < 1
+                wins += reward
                 break
+    print(wins/M)
     return wins/M
 
 def search_parameters(env):
-    G = np.linspace(0.25, 0.99, 15)
-    A = np.linspace(0.85, 0.99, 5)
-    results = dict()
+    # G = np.linspace(0.25, 0.99, 15)
+    # A = np.linspace(0.85, 0.99, 5)
+    G = [0.99]
+    A = [0.10]
+    T = 1
+    results = []
     for gamma in G:
         for alpha in A:
             total = 0
             params = {
                 'gamma': gamma,
                 'alpha': alpha, 
-                'epsilon': 0.9, 
+                'epsilon': 1, 
                 'decay_rate': 0.95,
                 'decay_freq': 100,
                 'min_epsilon': 0.1,
-                'N': 5000,
+                'N': 100000,
                 'M': 1000
             }
-            for _ in range(10):
+            for _ in range(T):
                 total += test_parameters(env, params)
-            total /= 10
+            total /= T
+            results.append((total, params))
             print('Gamma: {}\nAlpha: {}\nScore: {}\n'.format(gamma, alpha, total))
 
-    hp = max(results, key=results.get)
+    hp = max(results)[1]
     print(hp)
     return hp
 

@@ -12,7 +12,7 @@ print()
 Q = defaultdict(int)
 gamma = 1
 alpha = 0.1
-N = 100000
+N = 750000
 M = 50000
 
 for _ in range(N):
