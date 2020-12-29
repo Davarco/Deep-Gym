@@ -1,0 +1,3 @@
+Using Q-Learning on the default state representation only achieves ~40/10/50 win/draw/loss. I think
+a more robust state is needed to beat the dealer - one that takes into account the cards on the
+table (though the OpenAI gym samples with replacement, so this might be moot).
