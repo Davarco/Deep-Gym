@@ -1,0 +1,4 @@
+Reinforcement Learning: 
+Use RL to derive an optimal policy for learning some MDP. Note how we assume the transition and
+reward function are unknown, so we can't use offline value/policy iteration. Instead, we use online
+trial-by-error methods.
