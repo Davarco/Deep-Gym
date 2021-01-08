@@ -1,0 +1,3 @@
+This didn't work at all until I switched to 'reward_to_go' and advantage standardization.
+This was also very sensitive to NN design. Using 4 layers with 15 hidden units performed much worse
+than 3 layers with 10.

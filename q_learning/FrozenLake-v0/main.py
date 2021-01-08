@@ -73,7 +73,7 @@ def search_parameters(env):
                 'decay_rate': 0.95,
                 'decay_freq': 100,
                 'min_epsilon': 0.1,
-                'N': 100000,
+                'N': 10000,
                 'M': 1000
             }
             for _ in range(T):
