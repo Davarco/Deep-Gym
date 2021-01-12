@@ -5,6 +5,7 @@ from torch import distributions
 
 import numpy as np
 import torch
+import itertools
 
 
 class Policy(nn.Module):
@@ -26,12 +27,27 @@ class Policy(nn.Module):
         self.discrete = discrete
         self.learning_rate = learning_rate
         self.device = 'cuda:0' if use_gpu else 'cpu'
-        self.nn = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
-        self.optimizer = optim.Adam(self.nn.parameters(), self.learning_rate)
+
+        if self.discrete:
+            self.nn = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
+            self.optimizer = optim.Adam(self.nn.parameters(), self.learning_rate)
+        else:
+            self.mean = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
+            self.logstd = nn.Parameter(
+                torch.zeros(self.ac_dim, dtype=torch.float32, device=self.device)
+            )
+            self.optimizer = optim.Adam(
+                list(self.mean.parameters()) + [self.logstd],
+                self.learning_rate
+            )
 
     def forward(self, obs):
-        logits = self.nn(obs)
-        return distributions.Categorical(logits=logits)
+        if self.discrete:
+            logits = self.nn(obs)
+            return distributions.Categorical(logits=logits)
+        else:
+            mean = self.mean(obs)
+            return distributions.MultivariateNormal(mean, scale_tril=torch.diag(self.logstd.exp()))
 
     def get_action(self, obs):
         obs = torch.tensor(obs).float().to(self.device)
@@ -44,7 +60,7 @@ class Policy(nn.Module):
         out_dim, 
         hidden_dim, 
         n_layers,
-        activation=nn.ReLU(),
+        activation=nn.Tanh(),
         output_activation=nn.Identity()
     ):
         layers = []
@@ -68,9 +84,9 @@ class Policy(nn.Module):
         # Note the loss using 'log_prob' has a negative sign, while the one using CrossEntropyLoss 
         # doesn't. 
         dis = self.forward(obs)
-        # loss = -torch.mean(dis.log_prob(actions)*advantages)
-        logits = self.nn(obs)
-        loss = torch.mean(nn.CrossEntropyLoss(reduce=False)(logits, actions)*advantages)
+        loss = -torch.mean(dis.log_prob(actions)*advantages)
+        # logits = self.nn(obs)
+        # loss = torch.mean(nn.CrossEntropyLoss(reduce=False)(logits, actions)*advantages)
 
         self.optimizer.zero_grad()
         loss.backward()

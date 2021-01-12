@@ -1,3 +1,7 @@
 This didn't work at all until I switched to 'reward_to_go' and advantage standardization.
-This was also very sensitive to NN design. Using 4 layers with 15 hidden units performed much worse
-than 3 layers with 10.
+This was also a bit sensitive to NN design. Using 4 layers with 15 hidden units performed noticeably
+worse than 3 layers with 10.
+Lunar lander doesn't seem to be working right now.
+I should probably sample data from a replay buffer rather than collecting trajectories each episode.
+Scratch most of the above, I accidentally concatenated the entire rewards list. It worked on
+CartPole because I was using a batch size of 1.
