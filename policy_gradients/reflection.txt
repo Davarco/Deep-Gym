@@ -5,3 +5,5 @@ Lunar lander doesn't seem to be working right now.
 I should probably sample data from a replay buffer rather than collecting trajectories each episode.
 Scratch most of the above, I accidentally concatenated the entire rewards list. It worked on
 CartPole because I was using a batch size of 1.
+On a more practical note, I started out by using the number of rollouts rather than timesteps, but
+the latter makes much more sense because of how varied rollouts can be.

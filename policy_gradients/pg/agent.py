@@ -1,6 +1,8 @@
 from policy import Policy
+
 import numpy as np
 import torch
+from collections import defaultdict
 
 
 class Agent():
@@ -16,7 +18,7 @@ class Agent():
             params['use_gpu']
         )
         self.gamma = params['gamma']
-        self.num_rollouts = params['num_rollouts']
+        self.batch_size = params['batch_size']
         self.max_rollout_length = params['max_rollout_length']
         self.num_episodes = params['num_episodes']
         self.reward_to_go = params['reward_to_go']
@@ -38,39 +40,38 @@ class Agent():
     def train(self):
         best_avg_reward = -float('inf')
         for i in range(self.num_episodes):
-            avg_reward = self.train_one_iteration()/self.num_rollouts
+            avg_reward = self.train_one_iteration()
             best_avg_reward = max(best_avg_reward, avg_reward)
             print('Itr {}: Average Reward={}, Best Reward={}'.format(i, avg_reward, best_avg_reward))
-            if i % 100 == 0:
+            if i % 10 == 0:
                 self.run_single_iteration()
             # if avg_reward > 1000:
             #    break
 
     def train_one_iteration(self):
-        rollouts = sample_n_rollouts(self.env, self.actor, self.num_rollouts, self.max_rollout_length)
+        rollouts = sample_n_rollouts(self.env, self.actor, self.batch_size, self.max_rollout_length)
+        num_rollouts = len(rollouts['reward'])
         q_values = self.estimate_q_values(rollouts['reward'])
         advantages = self.estimate_advantages(q_values)
         total_reward = sum([np.sum(rewards) for rewards in rollouts['reward']])
         self.actor.update(rollouts['obs'], rollouts['action'], advantages)
-        return total_reward
+        return total_reward/num_rollouts
     
-    def estimate_q_values(self, rewards_list) -> np.ndarray:
+    def estimate_q_values(self, rewards_list):
         ret = None
         for rewards in rewards_list:
+            T = len(rewards)
             if not self.reward_to_go:
-                q, c = 0, 1
-                for r in rewards: 
-                    q += c*r
-                    c *= self.gamma
-                temp = np.array([q for _ in range(len(rewards_list))])
+                p = np.arange(T)
+                q = np.sum(np.multiply(np.power(self.gamma, p), rewards)) 
+                temp = np.array([q for _ in range(T)])
                 ret = temp if ret is None else np.concatenate((ret, temp))
             else:
-                temp = np.zeros(len(rewards))
-                q, c = 0, 1
-                for i in reversed(range(len(rewards))):
-                    q += c * rewards[i]
-                    c *= self.gamma
-                    temp[i] = q
+                temp = np.zeros(T)
+                for i in range(T):
+                    p = np.arange(T-i)
+                    q = np.sum(np.multiply(np.power(self.gamma, p), rewards[i:])) 
+                    temp[i] = q 
                 ret = temp if ret is None else np.concatenate((ret, temp))
         return ret
 
@@ -80,7 +81,7 @@ class Agent():
             q_values /= np.std(q_values)
         return q_values
 
-def sample_rollout(env, actor, max_rollout_length) -> np.ndarray:
+def sample_rollout(env, actor, max_rollout_length):
     rollout = {
         'obs': [],
         'action': [],
@@ -104,9 +105,10 @@ def sample_rollout(env, actor, max_rollout_length) -> np.ndarray:
         rollout[key] = np.array(rollout[key])
     return rollout
 
-def sample_n_rollouts(env, actor, num_rollouts, max_rollout_length) -> np.ndarray:
+def sample_n_rollouts(env, actor, batch_size, max_rollout_length):
+    size = 0
     rollouts = dict()
-    for i in range(num_rollouts):
+    while size < batch_size:
         rollout = sample_rollout(env, actor, max_rollout_length)
         if not rollouts:
             for key in rollout:
@@ -120,6 +122,6 @@ def sample_n_rollouts(env, actor, num_rollouts, max_rollout_length) -> np.ndarra
                     rollouts[key] = np.concatenate((rollouts[key], rollout[key]))
                 else:
                     rollouts[key].append(rollout[key])
+        size += rollout['reward'].size
     return rollouts
-
 
