@@ -89,6 +89,6 @@ def seed(env, i):
     torch.manual_seed(1)
 
 if __name__ == '__main__':
-    # cartpole()
+    cartpole()
     # inverted_pendulum()
-    lunar_lander()
+    # lunar_lander()

@@ -15,17 +15,15 @@ def cartpole():
     params = {
         'ob_dim': 4,
         'ac_dim': 2,
-        'hidden_dim': 32,
-        'n_layers': 3,
+        'hidden_dim': 10,
+        'n_layers': 2,
         'discrete': True,
-        'cnn': False,
-        'buffer_size': 50000,
-        'batch_size': 128,
-        'num_episodes': 1000,
-        'episode_length': 1000,
-        'update_freq': 100,
-        'learning_rate': 0.0001,
-        'gamma': 0.99,
+        'learning_rate': 0.01,
+        'gamma': 0.95,
+        'batch_size': 1000,
+        'max_rollout_length': 100000000, # INF, in practice
+        'num_episodes': 100,
+        'standardize_advantage': True,
         'use_gpu': True
     }
     agent = Agent(env, params) 
@@ -39,4 +37,5 @@ def seed(env, i):
 
 if __name__ == '__main__':
     cartpole()
+    # inverted_pendulum()
     # lunar_lander()

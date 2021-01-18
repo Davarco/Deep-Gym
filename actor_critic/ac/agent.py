@@ -1,4 +1,4 @@
-from policy import Policy
+from policy import Actor, Critic
 
 import numpy as np
 import torch
@@ -8,7 +8,7 @@ from collections import defaultdict
 class Agent():
     def __init__(self, env, params):
         self.env = env
-        self.actor = Policy(
+        self.actor = Actor(
             params['ob_dim'],
             params['ac_dim'],
             params['hidden_dim'],
@@ -17,11 +17,17 @@ class Agent():
             params['learning_rate'],
             params['use_gpu']
         )
+        self.critic = Critic(
+            params['ob_dim'],
+            params['hidden_dim'],
+            params['n_layers'],
+            params['learning_rate'],
+            params['use_gpu']
+        )
         self.gamma = params['gamma']
         self.batch_size = params['batch_size']
         self.max_rollout_length = params['max_rollout_length']
         self.num_episodes = params['num_episodes']
-        self.reward_to_go = params['reward_to_go']
         self.standardize_advantage = params['standardize_advantage']
 
     def run_demo(self):
@@ -43,41 +49,32 @@ class Agent():
             print('Itr {}: Average Reward={}'.format(i, avg_reward))
             if i % 10 == 0:
                 self.run_single_iteration()
-            # if avg_reward > 1000:
-            #    break
 
     def train_one_iteration(self):
         rollouts = sample_n_rollouts(self.env, self.actor, self.batch_size, self.max_rollout_length)
         num_rollouts = len(rollouts['reward'])
         total_reward = sum([np.sum(rewards) for rewards in rollouts['reward']])
-        values = self.estimate_values(rollouts['reward'])
-        advantages = self.estimate_advantages(values)
+        rewards = self.estimate_rewards(rollouts['reward'])
+        values = self.critic.get_values(rollouts['obs'])
+        advantages = rewards - values
         self.actor.update(rollouts['obs'], rollouts['action'], advantages)
+        self.critic.update(rollouts['obs'], values)
         return total_reward/num_rollouts
-    
-    def estimate_values(self, rewards_list):
+
+    def estimate_rewards(self, rewards_list):
         ret = None
         for rewards in rewards_list:
             T = len(rewards)
-            if not self.reward_to_go:
-                p = np.arange(T)
-                q = np.sum(np.multiply(np.power(self.gamma, p), rewards)) 
-                temp = np.array([q for _ in range(T)])
-                ret = temp if ret is None else np.concatenate((ret, temp))
-            else:
-                temp = np.zeros(T)
-                for i in range(T):
-                    p = np.arange(T-i)
-                    q = np.sum(np.multiply(np.power(self.gamma, p), rewards[i:])) 
-                    temp[i] = q 
-                ret = temp if ret is None else np.concatenate((ret, temp))
-        return ret
-
-    def estimate_advantages(self, values):
+            temp = np.zeros(T)
+            for i in range(T):
+                p = np.arange(T-i)
+                q = np.sum(np.multiply(np.power(self.gamma, p), rewards[i:])) 
+                temp[i] = q 
+            ret = temp if ret is None else np.concatenate((ret, temp))
         if self.standardize_advantage:
-            values -= np.mean(values)
-            values /= np.std(values)
-        return values
+            ret -= np.mean(ret)
+            ret /= np.std(ret)
+        return ret
 
 def sample_rollout(env, actor, max_rollout_length):
     rollout = {

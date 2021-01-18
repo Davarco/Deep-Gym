@@ -1,0 +1,2 @@
+This one wasn't actually too bad after implementing policy gradients. I ended up using rollouts to update the value
+function network, though one could have used r+gamma*V(next) as suggested in the CS285 HW.

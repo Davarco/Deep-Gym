@@ -22,85 +22,53 @@ class Agent():
                 params['use_gpu']
             )
         self.batch_size = params['batch_size']
-        self.max_rollout_length = params['max_rollout_length']
         self.num_episodes = params['num_episodes']
+        self.episode_length = params['episode_length']
         self.update_freq = params['update_freq']
 
     def run_demo(self):
         while True:
             self.run_single_iteration()
 
-    def run_single_iteration(self):
+    def run_single_iteration(self, render=True):
         obs = self.env.reset()
-        for _ in range(self.max_rollout_length):
-            self.env.render()
+        total_reward = 0
+        for _ in range(self.episode_length):
+            if render:
+                self.env.render()
             action = self.policy.get_action(obs)
             obs, reward, done, _ = self.env.step(action)
+            total_reward += reward
             if done: 
-                break
+                return total_reward
 
     def train(self):
+        obs = self.env.reset()
         for i in range(self.num_episodes):
-            if i % 50 == 0:
-            #     self.policy.copy_parameters()
-                self.run_single_iteration()
-            eps = max(0.01, 1 - 1/max(i, 300)) 
-            rollouts = sample_n_rollouts(self.env, self.policy, self.batch_size, self.max_rollout_length, eps)
-            num_rollouts = len(rollouts['reward'])
-            total_reward = sum([np.sum(rewards) for rewards in rollouts['reward']])
-            rollouts['reward'] = np.concatenate(rollouts['reward'])
-            for m in range(rollouts['reward'].size):
-                sample = { 
-                    'obs': rollouts['obs'][m],
-                    'action': rollouts['action'][m],
-                    'reward': rollouts['reward'][m],
-                    'next_obs': rollouts['next_obs'][m]
-                }
+            if i % self.update_freq == 0:
+                self.policy.copy_parameters()
+            if i % 20 == 0:
+                reward = self.run_single_iteration()
+                obs = None
+            # Some form of epsilon annealing, though this might not be the best.
+            eps = max(0.01, 1 - min(i, 500)/500) 
+            total_loss = 0
+            
+            for t in range(self.episode_length): 
+                obs = self.env.reset() if obs is None else obs
+                action = self.policy.get_action(obs, eps)
+                # print(obs, action)
+                next_obs, reward, done, _ = self.env.step(action)
+                sample = { 'obs': obs, 'action': action, 'reward': reward, 'next_obs': next_obs, 'done': done }
                 self.buffer.add_sample(sample)
-            batch = self.buffer.sample_batch(self.batch_size)
-            self.policy.update(batch['obs'], batch['action'], batch['reward'], batch['next_obs'])
-            print('Episode {}: Average Reward={}'.format(i, total_reward/num_rollouts))
+                obs = next_obs
 
-def sample_rollout(env, policy, max_rollout_length, epsilon=0.01):
-    rollout = {
-        'obs': [],
-        'action': [],
-        'reward': [],
-        'next_obs': [],
-    }
-    obs = env.reset()
-    for i in range(max_rollout_length):
-        rollout['obs'].append(obs)
-        action = policy.get_action(obs, epsilon)
-        rollout['action'].append(action)
-        obs, reward, done, _ = env.step(action)
-        rollout['reward'].append(reward)
-        rollout['next_obs'].append(obs)
-        if done:
-            break
-        if i == max_rollout_length-1:
-            print('Reached max rollout length.')
-    for key in rollout:
-        rollout[key] = np.array(rollout[key])
-    return rollout
+                if self.buffer.count >= self.batch_size:
+                    b = self.buffer.sample_batch(self.batch_size)
+                    total_loss += self.policy.update(b['obs'], b['action'], b['reward'], b['next_obs'], b['done'])
+                if done:
+                    obs = None
+                    print('[Episode {}]: Reward={} Loss={}'.format(i, t+1, total_loss/(t+1)))
+                    break
 
-def sample_n_rollouts(env, policy, num_steps, max_rollout_length, epsilon=0.01):
-    size = 0
-    rollouts = dict()
-    while size < num_steps:
-        rollout = sample_rollout(env, policy, max_rollout_length, epsilon)
-        if not rollouts:
-            for key in rollout:
-                if key != 'reward':
-                    rollouts[key] = rollout[key]
-                else:
-                    rollouts[key] = [ rollout[key] ]
-        else:
-            for key in rollout:
-                if key != 'reward':
-                    rollouts[key] = np.concatenate((rollouts[key], rollout[key]))
-                else:
-                    rollouts[key].append(rollout[key])
-        size += rollout['reward'].size
-    return rollouts
 

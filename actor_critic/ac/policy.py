@@ -8,7 +8,7 @@ import torch
 import itertools
 
 
-class Policy(nn.Module):
+class Actor(nn.Module):
     def __init__(
         self, 
         ob_dim, 
@@ -19,7 +19,7 @@ class Policy(nn.Module):
         learning_rate,
         use_gpu=False
     ):
-        super(Policy, self).__init__()
+        super(Actor, self).__init__()
         self.ob_dim = ob_dim
         self.ac_dim = ac_dim
         self.hidden_dim = hidden_dim
@@ -29,10 +29,11 @@ class Policy(nn.Module):
         self.device = 'cuda:0' if use_gpu else 'cpu'
 
         if self.discrete:
-            self.nn = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
+            self.nn = build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
             self.optimizer = optim.Adam(self.nn.parameters(), self.learning_rate)
         else:
-            self.mean = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
+            # Unimplemented for actor-critic.
+            self.mean = build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
             self.logstd = nn.Parameter(
                 torch.zeros(self.ac_dim, dtype=torch.float32, device=self.device)
             )
@@ -54,42 +55,70 @@ class Policy(nn.Module):
         dis = self.forward(obs)
         return dis.sample().cpu().numpy()
 
-    def build(
-        self, 
-        in_dim, 
-        out_dim, 
-        hidden_dim, 
-        n_layers,
-        activation=nn.Tanh(),
-        output_activation=nn.Identity()
-    ):
-        layers = []
-        prev_dim = in_dim
-        for _ in range(n_layers):
-            layers.append(nn.Linear(prev_dim, hidden_dim))
-            layers.append(activation)
-            prev_dim = hidden_dim
-        layers.append(nn.Linear(prev_dim, out_dim))
-        layers.append(output_activation)
-        return nn.Sequential(*layers)
-
     def update(self, obs, actions, advantages):
-        # print(obs, type(obs), obs.shape)
-        # print(actions, type(actions), actions.shape)
-        # print(advantages, type(advantages), advantages.shape)
         obs = torch.tensor(obs).float().to(self.device)
         actions = torch.tensor(actions).to(self.device)
         advantages = torch.tensor(advantages).float().to(self.device)
-
-        # Note the loss using 'log_prob' has a negative sign, while the one using CrossEntropyLoss 
-        # doesn't. 
+        # Note the loss using 'log_prob' has a negative sign, while the one using CrossEntropyLoss doesn't. 
         dis = self.forward(obs)
         loss = -torch.mean(dis.log_prob(actions)*advantages)
         # logits = self.nn(obs)
         # loss = torch.mean(nn.CrossEntropyLoss(reduce=False)(logits, actions)*advantages)
-
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
 
+class Critic(nn.Module):
+    def __init__(
+        self, 
+        ob_dim, 
+        hidden_dim, 
+        n_layers, 
+        discrete,
+        learning_rate,
+        use_gpu=False
+    ):
+        super(Critic, self).__init__()
+        self.ob_dim = ob_dim
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.learning_rate = learning_rate
+        self.device = 'cuda:0' if use_gpu else 'cpu'
+        self.nn = build(ob_dim, 1, hidden_dim, n_layers).to(self.device)
+        self.optimizer = optim.Adam(self.nn.parameters(), self.learning_rate)
+
+    def forward(self, obs):
+        obs = torch.tensor(obs).float().to(self.device)
+        return self.nn(obs)
+
+    def get_values(self, obs):
+        obs = torch.tensor(obs).float().to(self.device)
+        return self.nn(obs).cpu().detach().numpy()
+
+    def update(self, obs, values):
+        obs = torch.tensor(obs).float().to(self.device)
+        values = torch.tensor(values).float().to(self.device)
+        pred = self.forward(obs)
+        loss = nn.SmoothL1Loss()(pred, values)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+def build(
+    in_dim, 
+    out_dim, 
+    hidden_dim, 
+    n_layers,
+    activation=nn.Tanh(),
+    output_activation=nn.Identity()
+):
+    layers = []
+    prev_dim = in_dim
+    for _ in range(n_layers):
+        layers.append(nn.Linear(prev_dim, hidden_dim))
+        layers.append(activation)
+        prev_dim = hidden_dim
+    layers.append(nn.Linear(prev_dim, out_dim))
+    layers.append(output_activation)
+    return nn.Sequential(*layers)

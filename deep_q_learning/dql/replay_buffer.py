@@ -7,16 +7,19 @@ class ReplayBuffer():
             'obs': np.zeros((buffer_size, ob_dim)),
             'action': np.zeros(buffer_size, dtype=int),
             'reward': np.zeros(buffer_size),
-            'next_obs': np.zeros((buffer_size, ob_dim))
+            'next_obs': np.zeros((buffer_size, ob_dim)),
+            'done': np.zeros(buffer_size, dtype=int)
         }
         self.buffer_size = buffer_size
         self.index = 0
         self.count = 0
 
     def sample_batch(self, batch_size):
+        assert self.count >= batch_size
         batch = dict()
+        rows = np.random.choice(self.count, batch_size, replace=False)
         for key in self.buffer:
-            batch[key] = self.buffer[key][np.random.choice(self.count, batch_size, replace=False)]
+            batch[key] = self.buffer[key][rows]
         return batch
 
     def add_sample(self, sample):

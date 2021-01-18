@@ -30,19 +30,15 @@ class MLP(nn.Module):
         self.learning_rate = learning_rate
         self.device = 'cuda:0' if use_gpu else 'cpu'
 
-        # self.target_qnet = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
         self.qnet = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
+        self.target_qnet = self.build(ob_dim, ac_dim, hidden_dim, n_layers).to(self.device)
         self.optimizer = optim.Adam(self.qnet.parameters(), self.learning_rate)
-
-    def forward(self, obs):
-        if self.discrete:
-            return self.qnet(obs)
 
     def get_action(self, obs, epsilon=0.01):
         with torch.no_grad():
             if np.random.random() > epsilon:
                 obs = torch.tensor(obs).float().to(self.device)
-                action = self.forward(obs).argmax().cpu().numpy()
+                action = self.qnet(obs).argmax().cpu().numpy()
                 return action
             else:
                 return np.random.randint(self.ac_dim)
@@ -66,28 +62,39 @@ class MLP(nn.Module):
         layers.append(output_activation)
         return nn.Sequential(*layers)
 
-    def update(self, obs, actions, rewards, next_obs):
+    def update(self, obs, actions, rewards, next_obs, done):
         obs = torch.tensor(obs).float().to(self.device)
         actions = torch.tensor(actions).to(self.device)
         rewards = torch.tensor(rewards).float().to(self.device)
         next_obs = torch.tensor(next_obs).float().to(self.device)
+        done = torch.tensor(done).to(self.device)
         # print(obs, obs.shape)
         # print(actions, actions.shape)
         # print(rewards, rewards.shape)
         # print(next_obs, next_obs.shape)
+        # print(done, done.shape)
 
-        q_values = self.qnet(obs)
-        with torch.no_grad():
-            exp_q_values = q_values.clone()
-            target_q_values = self.qnet(next_obs)
-            exp_q_values[np.arange(len(q_values)), actions] = rewards + self.gamma * target_q_values.max(dim=1)[0]
-        loss = nn.MSELoss()(q_values, exp_q_values)
+        q_values = self.qnet(obs).gather(1, actions.view(-1, 1))
+        # print('qv', q_values, q_values.shape)
+        target_next_q_values = self.target_qnet(next_obs).max(dim=1)[0].detach()
+        # For CartPole-v0
+        for i in range(rewards.shape[0]):
+            if done[i]:
+                target_next_q_values[i] = -1
+        # print('tq', target_next_q_values, target_next_q_values.shape)
+        true_q_values = (rewards+self.gamma*target_next_q_values).unsqueeze(1)
+        # true_q_values = (rewards+target_next_q_values).unsqueeze(1)
+        # print('tr', true_q_values, true_q_values.shape)
+        loss = nn.SmoothL1Loss()(q_values, true_q_values)
 
         self.optimizer.zero_grad()
         loss.backward()
+        for param in self.qnet.parameters():
+            param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+        return loss.item()
+
     def copy_parameters(self):
-        # self.target_qnet.load_state_dict(self.qnet.state_dict())
-        pass
+        self.target_qnet.load_state_dict(self.qnet.state_dict()) 
 

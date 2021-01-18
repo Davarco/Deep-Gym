@@ -1,0 +1,3 @@
+Learned the hard way when to use torch.zero_grad()
+Learned the hard way that I was sampling different rows for the same samples
+Turns out that penalizing the done state was more important that I thought! (CartPole)
