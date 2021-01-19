@@ -8,7 +8,7 @@ from collections import defaultdict
 class Agent():
     def __init__(self, env, params):
         self.env = env
-        self.actor = Policy(
+        self.policy = Policy(
             params['ob_dim'],
             params['ac_dim'],
             params['hidden_dim'],
@@ -32,7 +32,7 @@ class Agent():
         obs = self.env.reset()
         for _ in range(self.max_rollout_length):
             self.env.render()
-            action = self.actor.get_action(obs)
+            action = self.policy.get_action(obs)
             obs, reward, done, _ = self.env.step(action)
             if done: 
                 break
@@ -47,15 +47,14 @@ class Agent():
             #    break
 
     def train_one_iteration(self):
-        rollouts = sample_n_rollouts(self.env, self.actor, self.batch_size, self.max_rollout_length)
+        rollouts = sample_n_rollouts(self.env, self.policy, self.batch_size, self.max_rollout_length)
         num_rollouts = len(rollouts['reward'])
         total_reward = sum([np.sum(rewards) for rewards in rollouts['reward']])
-        values = self.estimate_values(rollouts['reward'])
-        advantages = self.estimate_advantages(values)
-        self.actor.update(rollouts['obs'], rollouts['action'], advantages)
+        advantages = self.estimate_advantages(rollouts['reward'])
+        self.policy.update(rollouts['obs'], rollouts['action'], advantages)
         return total_reward/num_rollouts
     
-    def estimate_values(self, rewards_list):
+    def estimate_advantages(self, rewards_list):
         ret = None
         for rewards in rewards_list:
             T = len(rewards)
@@ -71,15 +70,12 @@ class Agent():
                     q = np.sum(np.multiply(np.power(self.gamma, p), rewards[i:])) 
                     temp[i] = q 
                 ret = temp if ret is None else np.concatenate((ret, temp))
+        if self.standardize_advantage:
+            ret -= np.mean(ret)
+            ret /= np.std(ret)
         return ret
 
-    def estimate_advantages(self, values):
-        if self.standardize_advantage:
-            values -= np.mean(values)
-            values /= np.std(values)
-        return values
-
-def sample_rollout(env, actor, max_rollout_length):
+def sample_rollout(env, policy, max_rollout_length):
     rollout = {
         'obs': [],
         'action': [],
@@ -90,7 +86,7 @@ def sample_rollout(env, actor, max_rollout_length):
     obs = env.reset()
     for i in range(max_rollout_length):
         rollout['obs'].append(obs)
-        action = actor.get_action(obs)
+        action = policy.get_action(obs)
         rollout['action'].append(action)
         obs, reward, done, _ = env.step(action)
         rollout['reward'].append(reward)
@@ -103,11 +99,11 @@ def sample_rollout(env, actor, max_rollout_length):
         rollout[key] = np.array(rollout[key])
     return rollout
 
-def sample_n_rollouts(env, actor, batch_size, max_rollout_length):
+def sample_n_rollouts(env, policy, batch_size, max_rollout_length):
     size = 0
     rollouts = dict()
     while size < batch_size:
-        rollout = sample_rollout(env, actor, max_rollout_length)
+        rollout = sample_rollout(env, policy, max_rollout_length)
         if not rollouts:
             for key in rollout:
                 if key != 'reward':

@@ -74,20 +74,15 @@ class Policy(nn.Module):
         return nn.Sequential(*layers)
 
     def update(self, obs, actions, advantages):
-        # print(obs, type(obs), obs.shape)
-        # print(actions, type(actions), actions.shape)
-        # print(advantages, type(advantages), advantages.shape)
         obs = torch.tensor(obs).float().to(self.device)
         actions = torch.tensor(actions).to(self.device)
         advantages = torch.tensor(advantages).float().to(self.device)
-
         # Note the loss using 'log_prob' has a negative sign, while the one using CrossEntropyLoss 
         # doesn't. 
         dis = self.forward(obs)
         loss = -torch.mean(dis.log_prob(actions)*advantages)
         # logits = self.nn(obs)
         # loss = torch.mean(nn.CrossEntropyLoss(reduce=False)(logits, actions)*advantages)
-
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
